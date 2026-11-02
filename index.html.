@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hamaad Learning Hub</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial,sans-serif;background:#f3f7f5;color:#18352b}
+header{background:#075b40;color:white;padding:25px 16px;text-align:center}
+header h1{margin:5px}
+header p{margin:8px}
+main{max-width:750px;margin:25px auto;padding:15px}
+.card{background:white;padding:20px;margin-bottom:18px;border-radius:12px;box-shadow:0 2px 10px #0001}
+h2{color:#08734d}
+input,select,textarea,button{width:100%;padding:12px;margin:7px 0;border:1px solid #ccc;border-radius:7px;font-size:16px}
+button{background:#08734d;color:white;border:0;font-weight:bold;cursor:pointer}
+button.secondary{background:#405c50}
+.hidden{display:none}
+.lesson{border-bottom:1px solid #ddd;padding:12px 0}
+footer{text-align:center;padding:20px;background:#075b40;color:white}
+</style>
+</head>
+<body>
+
+<header>
+<h1>Hamaad Learning Hub</h1>
+<p>Learn. Grow. Succeed.</p>
+<p>Quality learning for every student.</p>
+</header>
+
+<main>
+<section class="card" id="auth">
+<h2>Welcome to Hamaad Learning Hub</h2>
+<p>Create a free account or sign in to continue learning.</p>
+
+<h3>Student Registration</h3>
+<input id="name" placeholder="Your full name">
+<select id="class">
+<option>JSS 1</option><option>JSS 2</option><option>JSS 3</option>
+<option>SS 1</option><option>SS 2</option><option>SS 3</option>
+</select>
+<input id="signupEmail" type="email" placeholder="Email address">
+<input id="signupPassword" type="password" placeholder="Create password">
+<button onclick="register()">Register for Free</button>
+
+<hr>
+<h3>Student Login</h3>
+<input id="loginEmail" type="email" placeholder="Email address">
+<input id="loginPassword" type="password" placeholder="Password">
+<button onclick="login()">Login</button>
+<p id="message"></p>
+</section>
+
+<section class="card hidden" id="dashboard">
+<h2 id="welcome">Student Dashboard</h2>
+<p id="classInfo"></p>
+<button class="secondary" onclick="logout()">Log Out</button>
+<h2>Available Lessons</h2>
+<div id="lessons">Loading lessons...</div>
+</section>
+
+<section class="card hidden" id="admin">
+<h2>Administrator Dashboard</h2>
+<h3>Publish a Lesson</h3>
+<input id="lessonTitle" placeholder="Lesson title">
+<input id="lessonSubject" placeholder="Subject">
+<select id="lessonClass">
+<option>All classes</option>
+<option>JSS 1</option><option>JSS 2</option><option>JSS 3</option>
+<option>SS 1</option><option>SS 2</option><option>SS 3</option>
+</select>
+<textarea id="lessonSummary" placeholder="Short lesson description"></textarea>
+<textarea id="lessonContent" rows="8" placeholder="Write the lesson here"></textarea>
+<button onclick="publishLesson()">Publish Lesson</button>
+<p id="adminMessage"></p>
+</section>
+</main>
+
+<footer>
+<p>© 2026 Hamaad Learning Hub</p>
+<p>Founder: Muhammad Salis Jameel</p>
+<p>Learn. Grow. Succeed.</p>
+</footer>
+
+<script>
+const SUPABASE_URL = "https://nrsekkirfylchxsscnkt.supabase.com";
+const SUPABASE_KEY = "sb_publishable_uRZ1sOwIUXZMfQTNUcxkaw_fEtpy9p8";
+const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let currentUser = null;
+let currentProfile = null;
+
+function message(text){
+ document.getElementById("message").textContent=text;
+}
+
+async function register(){
+ const full_name=document.getElementById("name").value.trim();
+ const email=document.getElementById("signupEmail").value.trim();
+ const password=document.getElementById("signupPassword").value;
+ const class_level=document.getElementById("class").value;
+
+ if(!full_name || !email || password.length<6){
+  message("Enter your name, email and a password of at least 6 characters.");
+  return;
+ }
+
+ const {error}=await db.auth.signUp({
+  email,password,
+  options:{data:{full_name,class_level}}
+ });
+
+ message(error ? error.message : "Registration successful! You can now log in.");
+}
+
+async function login(){
+ const email=document.getElementById("loginEmail").value.trim();
+ const password=document.getElementById("loginPassword").value;
+
+ const {error}=await db.auth.signInWithPassword({email,password});
+
+ if(error){message(error.message);return;}
+ await loadDashboard();
+}
+
+async function loadDashboard(){
+ const {data:{user}}=await db.auth.getUser();
+ if(!user)return;
+
+ currentUser=user;
+
+ const {data,error}=await db.from("profiles")
+ .select("*").eq("id",user.id).single();
+
+ if(error){message(error.message);return;}
+
+ currentProfile=data;
+
+ document.getElementById("auth").classList.add("hidden");
+ document.getElementById("dashboard").classList.remove("hidden");
+ document.getElementById("welcome").textContent="Welcome, "+data.full_name;
+ document.getElementById("classInfo").textContent="Class: "+data.class_level;
+
+ if(data.role==="admin"){
+  document.getElementById("admin").classList.remove("hidden");
+ }
+ loadLessons();
+}
+
+async function loadLessons(){
+ const box=document.getElementById("lessons");
+ const {data,error}=await db.from("lessons")
+ .select("*").order("created_at",{ascending:false});
+
+ if(error){box.textContent="Unable to load lessons: "+error.message;return;}
+
+ if(!data.length){box.textContent="No lessons published yet. Please check again soon.";return;}
+
+ box.innerHTML="";
+ data.forEach(item=>{
+  if(item.class_level!=="All classes" &&
+     item.class_level!==currentProfile.class_level)return;
+
+  const div=document.createElement("div");
+  div.className="lesson";
+
+  const title=document.createElement("h3");
+  title.textContent=item.title;
+
+  const subject=document.createElement("p");
+  subject.textContent=item.subject+" — "+item.class_level;
+
+  const summary=document.createElement("p");
+  summary.textContent=item.summary||"";
+
+  const content=document.createElement("p");
+  content.textContent=item.content;
+
+  div.append(title,subject,summary,content);
+  box.appendChild(div);
+ });
+}
+
+async function publishLesson(){
+ const title=document.getElementById("lessonTitle").value.trim();
+ const subject=document.getElementById("lessonSubject").value.trim();
+ const class_level=document.getElementById("lessonClass").value;
+ const summary=document.getElementById("lessonSummary").value.trim();
+ const content=document.getElementById("lessonContent").value.trim();
+
+ if(!title||!subject||!content){
+  document.getElementById("adminMessage").textContent="Complete the title, subject and lesson content.";
+  return;
+ }
+
+ const {error}=await db.from("lessons").insert({
+  title,subject,class_level,summary,content,
+  created_by:currentUser.id
+ });
+
+ document.getElementById("adminMessage").textContent=
+ error ? error.message : "Lesson published successfully!";
+
+ if(!error){
+  document.getElementById("lessonTitle").value="";
+  document.getElementById("lessonSubject").value="";
+  document.getElementById("lessonSummary").value="";
+  document.getElementById("lessonContent").value="";
+  loadLessons();
+ }
+}
+
+async function logout(){
+ await db.auth.signOut();
+ location.reload();
+}
+
+db.auth.onAuthStateChange((event,session)=>{
+ if(event==="SIGNED_IN" && session){
+  setTimeout(loadDashboard,300);
+ }
+});
+</script>
+</body>
+</html>
